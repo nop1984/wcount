@@ -1,0 +1,9 @@
+# https://www.drupal.org/docs/drupal-apis/routing-system/structure-of-routes
+
+wcount.settings_form:
+  path: 'admin/config/wcount'
+  defaults:
+    _title: 'Word counter settings'
+    _form: '\Drupal\wcount\Form\WCountSettingsForm'
+  requirements:
+    _permission: 'administer Word Counter'

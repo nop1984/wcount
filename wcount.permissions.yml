@@ -1,0 +1,3 @@
+administer Word Counter:
+  title: 'Administer Word Counter'
+  restrict access: TRUE

@@ -1,0 +1,4 @@
+body_fieldname: "body"
+counter_fieldname: "words_count"
+method: "drupal_field"
+suspend: "on"

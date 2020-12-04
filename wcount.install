@@ -1,0 +1,89 @@
+<?php
+
+/**
+ * @file
+ * Install, update, and uninstall functions
+ */
+
+use Drupal\Core\Cache\Cache;
+
+/**
+ * Implements hook_install().
+ * 
+ * Create new translatable field for counter
+ * Invalidate render cache to let new UI elements be shown
+ */
+function wcount_install()
+{
+
+  $conf = wcount_get_state();
+  // adding field in install hook does not name them operable in admin fields UI
+  // wcount_entity_base_field_info() does UI things
+  $fields = wcount_fields();
+  \Drupal::entityDefinitionUpdateManager()
+    ->installFieldStorageDefinition(wcount_get_counter_fieldname(), 'node', 'node', $fields[wcount_get_counter_fieldname()]);
+
+
+  Cache::invalidateTags(['rendered']);
+}
+
+/**
+ * Implements hook_install().
+ */
+function wcount_uninstall()
+{
+  /*
+  // field created in hook_install is removed automatically, another attempt to remove crashes uninstall process
+  $mgr = \Drupal::entityDefinitionUpdateManager();
+  $fdef = $mgr->getFieldStorageDefinition(wcount_get_counter_fieldname(), 'node');
+  $mgr->uninstallFieldStorageDefinition($fdef);
+  */
+
+  Cache::invalidateTags(['rendered']);
+}
+
+/**
+ * Implements hook_schema()
+ */
+function wcount_schema()
+{
+  
+  $schema['wcount_data'] = [
+        'description' => 'Stores word count per node.',
+        'fields' => [
+            'entity_id' => [
+                'description' => 'ID of entity.',
+                'type' => 'int',
+                'unsigned' => TRUE,
+                'not null' => TRUE,
+                'default' => NULL,
+            ],
+            'language' => [
+              'description' => 'Langcode of entity.',
+              'type' => 'varchar',
+              'not null' => TRUE,
+              'default' => NULL,            
+            ],
+            'word_count' => [
+                'description' => 'Number of words',
+                'type' => 'int',
+                'unsigned' => TRUE,
+                'not null' => TRUE,
+                'default' => NULL,
+            ]
+        ],
+        'primary key' => [
+            'entity_id', 'language'
+        ],
+        'foreign keys' => [
+            'data_node' => [
+              'table' => 'node',
+              'columns' => [
+                'nid' => 'entity_id',
+              ],
+            ],
+        ]
+    ];
+
+    return $schema;
+}

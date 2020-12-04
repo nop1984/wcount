@@ -1,0 +1,259 @@
+<?php
+
+namespace Drupal\wcount {
+    const WCOUNT_SETTINGS = 'wcount.settings';
+    const BODY_FIELDNAME = 'body_fieldname';
+    const COUNTER_FIELDNAME = 'counter_fieldname';
+    const METHOD = 'method';
+    const SUSPEND = 'suspend';
+
+    const METHOD_DRUPAL_FIELD = 'drupal_field';
+    const METHOD_PLAIN_SQL = 'plain_sql';
+    /**
+     * Module is working
+     */
+    const SUSPEND_WORKING = 'on';
+    /**
+     * Module is suspended
+     */
+    const SUSPEND_SUSPENDED = 'off'; 
+}
+
+namespace {
+
+use \Drupal\Core\Entity\EntityInterface;
+use \Drupal\node\NodeInterface;
+
+
+
+/**
+ * helper function to get state and settings (e.g. body_fieldname, counter_fieldname, method, suspend ...)
+ *
+ * @param string $single_param name of single parameter, if missing then full array returned
+ * @return mixed
+ */
+function wcount_get_state($single_param = '')
+{
+    $config = \Drupal::config(\Drupal\wcount\WCOUNT_SETTINGS);
+    if (!empty($single_param)) {
+        $value = $config->get($single_param);
+        if ($value === null)
+            throw new \Exception("$single_param not exists in Word Counter configuration");
+        return $value;
+    }
+
+    return $config->get();
+}
+
+/**
+ * hook_ENTITY_TYPE_insert() implementation
+ *
+ * @param EntityInterface $entity
+ * @return void
+ */
+function wcount_node_insert(EntityInterface $entity)
+{
+    wcount_node_saving($entity);
+}
+
+/**
+ * hook_ENTITY_TYPE_update() implementation
+ *
+ * @param EntityInterface $entity
+ * @return void
+ */
+function wcount_node_update(EntityInterface $entity)
+{
+    wcount_node_saving($entity);
+}
+
+/**
+ * hook_ENTITY_TYPE_delete() implementation
+ *
+ * @param EntityInterface $entity
+ * @return void
+ */
+function wcount_node_delete(EntityInterface $entity)
+{
+}
+
+/**
+ * hook_ENTITY_TYPE_load() implementation
+ * does dirty trick with counter if SQL Method is chosen in settings (should be calculated field)
+ *
+ * @param EntityInterface $entities
+ * @return void
+ * @todo optimize loop, get rid of dirty trick by solving BaseFieldDefinition->setComputed
+ */
+function wcount_node_load($entities) {
+    $config = wcount_get_state();
+    if($config[\Drupal\wcount\SUSPEND] == \Drupal\wcount\SUSPEND_SUSPENDED) {
+        foreach($entities as $id => $ent) {
+            $ent->set($config[\Drupal\wcount\COUNTER_FIELDNAME], NULL);
+        }
+        return;
+    }
+    if(wcount_get_method($config) == \Drupal\wcount\METHOD_PLAIN_SQL) {
+        $database = \Drupal::database();
+        $query = $database->select('wcount_data', 'wcount_data');
+        $query->fields('wcount_data');
+        $orGroup = $query->orConditionGroup();
+        foreach($entities as $id => $ent) {
+            $andGroup = $query->andConditionGroup();
+            $andGroup->condition('entity_id', $id);
+            $andGroup->condition('language', $ent->get('langcode')->value);
+            $orGroup->condition($andGroup);
+        }
+        $query->condition($orGroup);
+        $res = $query->execute();
+        $res = $res->fetchAll();;
+        foreach($entities as $id => $ent) {
+            foreach($res as $r) {
+                if($r->entity_id == $id && $r->language == $ent->get('langcode')->value) {
+                    $ent->set($config[\Drupal\wcount\COUNTER_FIELDNAME], $r->word_count);
+                }
+            }
+        }
+
+    }
+}
+
+/**
+ * helper function for node saving (insert or update)
+ *
+ * @param NodeInterface $entity
+ * @return void
+ */
+function wcount_node_saving(NodeInterface $entity)
+{
+    $config = wcount_get_state();
+    if(wcount_get_method($config) == \Drupal\wcount\METHOD_PLAIN_SQL) {
+        $body = wcount_get_body($entity, $config);
+        $body = wcount_calc_words($body);
+        $database = \Drupal::database();
+        $query = $database->delete('wcount_data');
+        $query->condition('entity_id', $entity->id());
+        $query->condition('language', $entity->get('langcode')->value);
+        $query->execute();
+        $query = $database->insert('wcount_data');
+        $query->fields([
+            'entity_id'=>$entity->id(), 
+            'language'=>$entity->get('langcode')->value,
+            'word_count'=>$body+22
+            ]);
+        $query->execute();
+
+    }
+}
+
+/**
+ * hook_ENTITY_TYPE_presave() implementation
+ *
+ * @param EntityInterface $entity
+ * @return void
+ */
+function wcount_node_presave(NodeInterface $entity) {
+    $config = wcount_get_state();
+    if(wcount_get_method($config) == \Drupal\wcount\METHOD_DRUPAL_FIELD) {
+        $body = wcount_get_body($entity, $config);
+        $body = wcount_calc_words($body);
+        $entity->set($config[\Drupal\wcount\COUNTER_FIELDNAME], $body);
+    }
+}
+
+function wcount_get_method($config = null, $no_throw = false) {
+    $config = empty($config) ? wcount_get_state() : $config;
+    if(empty($config[\Drupal\wcount\METHOD]) && !$no_throw) {
+        throw new \Exception(__FUNCTION__ . " not able to obtain method");
+    }
+    return $config[\Drupal\wcount\METHOD];
+}
+
+/**
+ * helper function, contains hardcoded value for module install and uninstall
+ *
+ * @param [type] $config
+ * @return string
+ */
+function wcount_get_counter_fieldname($config = null) {
+    $config = empty($config) ? wcount_get_state() : $config;
+    if(empty($config[\Drupal\wcount\COUNTER_FIELDNAME])) {
+        return 'words_count';
+    }
+    return $config[\Drupal\wcount\COUNTER_FIELDNAME];
+}
+
+/**
+ * helper/wrapper function implementing words counting over prepared string
+ *
+ * @param string $no_html_text prepared string (no html, pure plain text)
+ * @return int 
+ */
+function wcount_calc_words($no_html_text) {
+    return str_word_count($no_html_text);
+}
+
+/**
+ * helper function to extract and prepare node body value
+ *
+ * @param EntityInterface $entity
+ * @param array|string $config config object as array, if empty will be obteined. Or body field name is string
+ * @return string
+ */
+function wcount_get_body(EntityInterface $entity, $config = null) {
+    $bfn = '';
+    $config = empty($config) ? wcount_get_state() : $config;
+    $bfn = is_string($config) ? $config : $config[\Drupal\wcount\BODY_FIELDNAME];
+    $renderer = \Drupal::service('renderer');
+    $body = $entity->{$bfn}->view('full');
+    $body = strip_tags($renderer->render($body));
+
+    return $body;
+}
+
+
+/**
+ * Implements hook_entity_base_field_info().
+ * Lets fields added to other entities to appear in admin UI
+ *
+ * @param \Drupal\Core\Entity\EntityTypeInterface $entity_type
+ * @return void|array
+ */
+function wcount_entity_base_field_info(\Drupal\Core\Entity\EntityTypeInterface $entity_type)
+{
+    if ($entity_type->id() === 'node') {
+        return wcount_fields();
+    }
+}
+
+/**
+ * Returns array of fields to be added for module needs
+ *
+ * @return array
+ */
+function wcount_fields()
+{
+    $conf = wcount_get_state();
+    
+    $fname = wcount_get_counter_fieldname();
+
+    $count_field = \Drupal\Core\Field\BaseFieldDefinition::create('integer')
+        ->setName($fname)
+        ->setLabel(t('Words count'))
+        ->setName($fname)
+        ->setDescription(t('Words count.'))
+        ->setReadOnly(TRUE)
+        ->setTranslatable(TRUE) //to let each language version of node have own count per body
+        ->setDisplayOptions('view', [
+            'label' => 'visible',
+            'type' => 'text_default',
+            'weight' => -5,
+        ])->setDisplayConfigurable('view', TRUE)
+        ->setDisplayOptions('form', [
+            'label' => 'visible',
+            'type' => 'hidden', // string_textfield will make the spinner
+            'weight' => 2,
+        ])->setDisplayConfigurable('form', FALSE);
+    return [$fname => $count_field];
+}
+}

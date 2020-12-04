@@ -1,0 +1,14 @@
+{
+    "name": "drupal/wcount",
+    "description": "Counts the words in node body. Demo task for Zaproo OÜ",
+    "type": "drupal-module",
+    "homepage": "https://www.zaproo.com/",
+    "support": {
+      "issues": "https://www.zaproo.com/"
+    },
+    "license": "GPL-2.0+",
+    "require" : {
+      
+    }
+  }
+  

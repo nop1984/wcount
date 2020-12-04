@@ -1,0 +1,10 @@
+wcount.settings:
+  type: config_object
+  label: 'Word Counter settings'
+  mapping:
+    body_fieldname:
+      type: string
+      label: 'Body fieldname'
+    counter_fieldname:
+      type:  string
+      label: 'Counter fieldname'

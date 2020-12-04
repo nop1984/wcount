@@ -1,0 +1,9 @@
+name: Word Counter
+type: module
+description: 'Counts the words in node body. Demo task for Zaproo OÜ'
+package: Test tasks
+configure: wcount.settings_form # *.routing.yml
+
+version: '8.x-1'
+core: '8.x'
+project: 'wcount'
