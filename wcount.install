@@ -56,20 +56,21 @@ function wcount_schema()
                 'type' => 'int',
                 'unsigned' => TRUE,
                 'not null' => TRUE,
-                'default' => NULL,
+                //'default' => NULL, //triggers MySQL syntax issue
             ],
             'language' => [
               'description' => 'Langcode of entity.',
               'type' => 'varchar',
+              'length' => 2,
               'not null' => TRUE,
-              'default' => NULL,            
+              //'default' => NULL, //triggers MySQL syntax issue
             ],
             'word_count' => [
                 'description' => 'Number of words',
                 'type' => 'int',
                 'unsigned' => TRUE,
-                'not null' => TRUE,
-                'default' => NULL,
+                //'not null' => TRUE, //triggers MySQL syntax issue
+                //'default' => NULL, //triggers MySQL syntax issue
             ]
         ],
         'primary key' => [
